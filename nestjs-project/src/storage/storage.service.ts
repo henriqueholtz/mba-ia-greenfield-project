@@ -1,13 +1,17 @@
+import { createReadStream, createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { Inject, Injectable } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   GetObjectCommand,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { Readable } from 'node:stream';
 import storageConfig from '../config/storage.config';
 
 export interface CompletedPart {
@@ -127,6 +131,32 @@ export class StorageService {
         }),
       }),
       { expiresIn: GET_URL_EXPIRATION_SECONDS },
+    );
+  }
+
+  async downloadToFile(storageKey: string, destPath: string): Promise<void> {
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: storageKey }),
+    );
+
+    await pipeline(
+      response.Body as Readable,
+      createWriteStream(destPath),
+    );
+  }
+
+  async uploadFile(
+    storageKey: string,
+    filePath: string,
+    contentType: string,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: storageKey,
+        Body: createReadStream(filePath),
+        ContentType: contentType,
+      }),
     );
   }
 }

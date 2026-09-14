@@ -6,6 +6,8 @@ import { QueueModule } from '../queue/queue.module';
 import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constants';
 import { StorageModule } from '../storage/storage.module';
 import { Video } from './entities/video.entity';
+import { VideoProcessor } from './video.processor';
+import { VideoProcessorService } from './video-processor.service';
 import { VideosController } from './videos.controller';
 import { VideosService } from './videos.service';
 
@@ -18,7 +20,7 @@ import { VideosService } from './videos.service';
     BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE }),
   ],
   controllers: [VideosController],
-  providers: [VideosService],
+  providers: [VideosService, VideoProcessorService, VideoProcessor],
   exports: [TypeOrmModule, VideosService],
 })
 export class VideosModule {}

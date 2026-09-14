@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
 **Status:** in_progress
-**SIs:** 6/8 completed
+**SIs:** 7/8 completed
 
 ### SI-03.1 — Infra: object storage, fila e worker no Compose
 - **Status:** completed
@@ -46,9 +46,14 @@
   - `videos.service.integration-spec.ts` now spins up a real `Queue` connected to the Compose `redis` service and drains/obliterates it in `beforeEach`/`afterAll` to keep test runs isolated — mirrors the "fila real via Compose, não mock" requirement from this SI's Tests table.
 
 ### SI-03.6 — Video worker: consumer BullMQ + processamento FFmpeg
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 4 passing (integration) + 12 re-verified (no regressions)
+- **Observations:**
+  - **Significant bug caught mid-SI:** `nest start worker --watch` (the script SI-03.1 pre-wired into `compose.yaml`'s `video-worker` service) does NOT select `src/worker.ts` as the entry point. The CLI's positional `[app]` argument to `nest start` only resolves a named project inside a monorepo-style `nest-cli.json` `projects` map; this project has no such map (single-app mode), so `nest start worker` silently falls back to the default `main.ts`/`AppModule` entry instead of erroring. Result: `video-worker`'s container had been booting the full HTTP API (mapping `/auth/*`, `/videos` routes) instead of consuming the queue, completely undetected until logs were inspected directly. Fixed by rewriting `worker:start:dev` to use `ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/worker.ts` (new devDependency: `ts-node-dev`), which runs the exact file directly instead of going through nest-cli's app-name resolution. `worker:start:prod` (`node dist/worker.js`) was already correct since a plain `nest build`/`tsc` compiles every file under `src/` regardless of the CLI's "app" concept — only the dev/watch path was broken. **Verified the fix** by restarting the `video-worker` compose service and confirming its logs show `WorkerModule`/`VideosModule` init and the custom "Video worker started, consuming video-processing queue" line, with no HTTP routes mapped.
+  - `WorkerModule` needed `UsersModule` in its imports even though the worker's own code never touches `User` directly — TypeORM's `autoLoadEntities: true` only registers entities reachable via some `TypeOrmModule.forFeature()` call in the current app's module graph, and `Channel`'s `@OneToOne(() => User, ...)` inverse relation requires `User`'s entity metadata to be present or `DataSource.initialize()` throws `TypeORMError: Entity metadata for Channel#user was not found`. This only surfaces when a slimmer module tree (worker) omits a module the full API (`AppModule` → `AuthModule` → ... → `UsersModule`) always pulls in transitively.
+  - `ffmpeg-static` was installed per this SI's explicit instruction, but is not actually wired in — the system already has real `ffmpeg`/`ffprobe` on PATH via the `apt install ffmpeg` from SI-03.1's `Dockerfile.dev` change, and `fluent-ffmpeg` auto-detects PATH binaries by default. `ffmpeg-static` only bundles an `ffmpeg` binary (no `ffprobe`), so wiring it in via `setFfmpegPath` while `ffprobe` still resolves from apt would mean two different `ffmpeg` binaries in play for no benefit — left the package installed (as instructed) but unused, deferring to the single apt-installed toolchain for consistency between `ffmpeg` and `ffprobe`.
+  - Created two tiny test video fixtures under `src/videos/fixtures/` (`test-video.mp4` ~30KB, a synthetic 2s clip generated via `ffmpeg -f lavfi`; `corrupted-video.mp4` ~40 bytes, plain text with a `.mp4` extension) for the integration tests to exercise real ffprobe/FFmpeg success and failure paths without depending on an external asset.
+  - `VideoProcessor.process` catches processing exceptions and logs+persists `status: 'failed'` without rethrowing — this is the documented exception in `nestjs-services.md` for background/queue-consumer contexts (rethrowing would just retry an unfixable corrupt-file error per BullMQ's retry policy from TD-01, and the domain requirement per TD-04 is exactly "no automatic retry beyond BullMQ's built-in retry/backoff").
 
 ### SI-03.7 — Endpoints de streaming, download e leitura por slug
 - **Status:** pending
