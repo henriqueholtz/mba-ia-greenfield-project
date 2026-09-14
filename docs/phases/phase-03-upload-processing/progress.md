@@ -1,7 +1,7 @@
 # phase-03-upload-processing — Progress
 
-**Status:** in_progress
-**SIs:** 7/8 completed
+**Status:** in_progress (final verification pending)
+**SIs:** 8/8 completed
 
 ### SI-03.1 — Infra: object storage, fila e worker no Compose
 - **Status:** completed
@@ -56,9 +56,13 @@
   - `VideoProcessor.process` catches processing exceptions and logs+persists `status: 'failed'` without rethrowing — this is the documented exception in `nestjs-services.md` for background/queue-consumer contexts (rethrowing would just retry an unfixable corrupt-file error per BullMQ's retry policy from TD-01, and the domain requirement per TD-04 is exactly "no automatic retry beyond BullMQ's built-in retry/backoff").
 
 ### SI-03.7 — Endpoints de streaming, download e leitura por slug
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 20 passing (e2e, full videos.e2e-spec.ts suite) + 11 re-verified (no regressions)
+- **Observations:**
+  - `GET /videos/:id/stream`, `GET /videos/:id/download`, and `GET /videos/:slug` are all anonymous per the Authorization Matrix — added `@Public()` on each, overriding the global JWT guard default.
+  - The `GET /videos/:slug` route sits after `GET /videos/:id/stream` and `GET /videos/:id/download` in the controller (declaration order matches path specificity: `:id/stream` and `:id/download` match two path segments, `:slug` alone matches one) — no route collision since Express/Nest resolve by segment count and literal suffix, not first-match-wins on the parameter name alone.
+  - E2E success-path tests for stream/download construct a `ready` video directly via the repository (uploading the real test fixture to MinIO first, then flipping `status` to `ready`) rather than waiting on the real `video-worker` container to finish processing asynchronously — deterministic and fast, and still exercises the real presigned-URL + Range-request round trip against MinIO. The actual worker path (draft → processing → ready via real FFmpeg) is already covered by SI-03.6's `video.processor.integration-spec.ts`; re-deriving it here via the async worker would be redundant and flaky (timing-dependent).
+  - Confirmed the download endpoint's presigned URL carries `response-content-disposition` as a query parameter (S3/MinIO's presigned-URL convention for `ResponseContentDisposition`), verified via an e2e assertion on `res.headers.location`.
 
 ### SI-03.8 — Domain exceptions de vídeo
 - **Status:** completed

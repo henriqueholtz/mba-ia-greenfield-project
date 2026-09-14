@@ -6,6 +6,7 @@ import {
   VideoAlreadyProcessedException,
   VideoForbiddenException,
   VideoNotFoundException,
+  VideoNotReadyException,
 } from '../common/exceptions/domain.exception';
 import { VIDEO_PROCESSING_QUEUE, VIDEO_PROCESS_JOB } from '../queue/queue.constants';
 import { StorageService } from '../storage/storage.service';
@@ -135,5 +136,50 @@ export class VideosService {
     });
 
     return saved;
+  }
+
+  async getStreamUrl(videoId: string): Promise<string> {
+    const video = await this.getReadyVideoById(videoId);
+    return this.storageService.getPresignedGetUrl(video.storage_key);
+  }
+
+  async getDownloadUrl(videoId: string): Promise<string> {
+    const video = await this.getReadyVideoById(videoId);
+    return this.storageService.getPresignedGetUrl(
+      video.storage_key,
+      `attachment; filename="${video.slug}.mp4"`,
+    );
+  }
+
+  async getThumbnailUrl(thumbnailKey: string): Promise<string> {
+    return this.storageService.getPresignedGetUrl(thumbnailKey);
+  }
+
+  async findBySlug(slug: string): Promise<Video> {
+    const video = await this.dataSource
+      .getRepository(Video)
+      .findOne({ where: { slug } });
+
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+
+    return video;
+  }
+
+  private async getReadyVideoById(videoId: string): Promise<Video> {
+    const video = await this.dataSource
+      .getRepository(Video)
+      .findOne({ where: { id: videoId } });
+
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+
+    if (video.status !== 'ready') {
+      throw new VideoNotReadyException();
+    }
+
+    return video;
   }
 }
