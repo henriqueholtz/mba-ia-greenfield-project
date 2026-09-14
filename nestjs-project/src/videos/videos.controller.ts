@@ -183,10 +183,7 @@ export class VideosController {
     description: 'Video is not ready for playback',
     schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
   })
-  async stream(
-    @Param('id') id: string,
-    @Res() res: Response,
-  ): Promise<void> {
+  async stream(@Param('id') id: string, @Res() res: Response): Promise<void> {
     const url = await this.videosService.getStreamUrl(id);
     res.redirect(HttpStatus.FOUND, url);
   }
@@ -212,10 +209,7 @@ export class VideosController {
     description: 'Video is not ready for playback',
     schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
   })
-  async download(
-    @Param('id') id: string,
-    @Res() res: Response,
-  ): Promise<void> {
+  async download(@Param('id') id: string, @Res() res: Response): Promise<void> {
     const url = await this.videosService.getDownloadUrl(id);
     res.redirect(HttpStatus.FOUND, url);
   }

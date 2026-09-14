@@ -8,7 +8,10 @@ import {
   VideoNotFoundException,
   VideoNotReadyException,
 } from '../common/exceptions/domain.exception';
-import { VIDEO_PROCESSING_QUEUE, VIDEO_PROCESS_JOB } from '../queue/queue.constants';
+import {
+  VIDEO_PROCESSING_QUEUE,
+  VIDEO_PROCESS_JOB,
+} from '../queue/queue.constants';
 import { StorageService } from '../storage/storage.service';
 import type { CompletedPart } from '../storage/storage.service';
 import { Video } from './entities/video.entity';

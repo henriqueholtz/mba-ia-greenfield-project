@@ -23,7 +23,7 @@ const THUMBNAIL_TIMESTAMP = '10%';
 
 function probe(filePath: string): Promise<ffmpeg.FfprobeData> {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, data) => {
+    ffmpeg.ffprobe(filePath, (err: Error | null, data) => {
       if (err) reject(err);
       else resolve(data);
     });

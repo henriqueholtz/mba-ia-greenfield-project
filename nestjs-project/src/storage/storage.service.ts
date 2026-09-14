@@ -139,10 +139,7 @@ export class StorageService {
       new GetObjectCommand({ Bucket: this.bucket, Key: storageKey }),
     );
 
-    await pipeline(
-      response.Body as Readable,
-      createWriteStream(destPath),
-    );
+    await pipeline(response.Body as Readable, createWriteStream(destPath));
   }
 
   async uploadFile(

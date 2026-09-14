@@ -71,7 +71,7 @@ export class Video {
   @UpdateDateColumn()
   updated_at: Date;
 
-  @ManyToOne(() => Channel)
+  @ManyToOne(() => Channel, (channel) => channel.videos)
   @JoinColumn({ name: 'channel_id' })
   channel: Channel;
 }
