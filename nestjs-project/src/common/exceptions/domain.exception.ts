@@ -48,3 +48,31 @@ export class TokenReuseDetectedException extends DomainException {
     );
   }
 }
+
+export class VideoNotFoundException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_FOUND', 404, 'Video not found');
+  }
+}
+
+export class VideoForbiddenException extends DomainException {
+  constructor() {
+    super('VIDEO_FORBIDDEN', 403, 'You do not have access to this video');
+  }
+}
+
+export class VideoAlreadyProcessedException extends DomainException {
+  constructor() {
+    super(
+      'VIDEO_ALREADY_PROCESSED',
+      409,
+      'Video upload has already been completed',
+    );
+  }
+}
+
+export class VideoNotReadyException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_READY', 409, 'Video is not ready for playback');
+  }
+}
