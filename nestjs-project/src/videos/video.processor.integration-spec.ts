@@ -13,6 +13,7 @@ import { StorageService } from '../storage/storage.service';
 import { Video } from './entities/video.entity';
 import { VideoProcessorService } from './video-processor.service';
 import { VideoProcessor } from './video.processor';
+import type { VideoProcessJobData } from './video.processor';
 
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 
@@ -81,8 +82,11 @@ describe('VideoProcessor (WorkerHost) (integration)', () => {
     );
   }
 
-  function makeJob(videoId: string, storageKey: string): Job {
-    return { data: { videoId, storageKey } } as Job;
+  function makeJob(
+    videoId: string,
+    storageKey: string,
+  ): Job<VideoProcessJobData> {
+    return { data: { videoId, storageKey } } as Job<VideoProcessJobData>;
   }
 
   it('updates the video to ready with extracted metadata on a successful job', async () => {

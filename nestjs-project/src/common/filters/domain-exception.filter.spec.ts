@@ -9,16 +9,24 @@ import {
   TokenReuseDetectedException,
 } from '../exceptions/domain.exception';
 
+interface ErrorResponseBody {
+  statusCode: number;
+  error: string;
+  message: unknown;
+}
+
 describe('DomainExceptionFilter', () => {
   let filter: DomainExceptionFilter;
-  let mockJson: jest.Mock;
-  let mockStatus: jest.Mock;
+  let mockJson: jest.Mock<void, [ErrorResponseBody]>;
+  let mockStatus: jest.Mock<{ json: typeof mockJson }, [number]>;
   let mockHost: ArgumentsHost;
 
   beforeEach(() => {
     filter = new DomainExceptionFilter();
-    mockJson = jest.fn();
-    mockStatus = jest.fn().mockReturnValue({ json: mockJson });
+    mockJson = jest.fn<void, [ErrorResponseBody]>();
+    mockStatus = jest
+      .fn<{ json: typeof mockJson }, [number]>()
+      .mockReturnValue({ json: mockJson });
 
     mockHost = {
       switchToHttp: () => ({
@@ -27,8 +35,8 @@ describe('DomainExceptionFilter', () => {
       }),
       getArgs: () => [],
       getArgByIndex: () => null,
-      switchToRpc: () => ({}) as any,
-      switchToWs: () => ({}) as any,
+      switchToRpc: () => ({}) as ReturnType<ArgumentsHost['switchToRpc']>,
+      switchToWs: () => ({}) as ReturnType<ArgumentsHost['switchToWs']>,
       getType: () => 'http',
     } as unknown as ArgumentsHost;
   });
@@ -51,7 +59,7 @@ describe('DomainExceptionFilter', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 401,
       error: 'INVALID_CREDENTIALS',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 
@@ -62,7 +70,7 @@ describe('DomainExceptionFilter', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 403,
       error: 'EMAIL_NOT_CONFIRMED',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 
@@ -73,7 +81,7 @@ describe('DomainExceptionFilter', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 401,
       error: 'INVALID_TOKEN',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 
@@ -84,7 +92,7 @@ describe('DomainExceptionFilter', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 401,
       error: 'TOKEN_EXPIRED',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 
@@ -95,7 +103,7 @@ describe('DomainExceptionFilter', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 401,
       error: 'TOKEN_REUSE_DETECTED',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 });

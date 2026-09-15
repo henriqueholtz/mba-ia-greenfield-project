@@ -1,10 +1,10 @@
 ---
 kind: phase
-name: phase-03-upload-processing
+name: phase-03-videos
 test_specs_aware: true
 sources_mtime:
-  docs/phases/phase-03-upload-processing/context.md: "2026-09-14T13:27:02.019242700-03:00"
-  docs/decisions/technical-decisions-upload-processing.md: "2026-09-14T13:25:09.360231400-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-09-14T13:27:02.019242700-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-14T13:25:09.360231400-03:00"
 ---
 
 # Phase 03 — Upload e Processamento de Vídeos

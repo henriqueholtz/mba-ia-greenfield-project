@@ -22,13 +22,18 @@ const SLUG_COLUMN = 'slug';
 const MAX_RETRIES = 5;
 const PART_SIZE_BYTES = 100 * 1024 * 1024;
 
+interface PgDriverError {
+  code?: string;
+  detail?: string;
+}
+
 function isPgUniqueViolationOnColumn(err: unknown, column: string): boolean {
   if (!(err instanceof QueryFailedError)) return false;
-  const e = err as any;
+  const driverError = err.driverError as PgDriverError;
   return (
-    e.code === PG_UNIQUE_VIOLATION &&
-    typeof e.detail === 'string' &&
-    e.detail.includes(column)
+    driverError.code === PG_UNIQUE_VIOLATION &&
+    typeof driverError.detail === 'string' &&
+    driverError.detail.includes(column)
   );
 }
 

@@ -1,23 +1,38 @@
-import { QueryFailedError } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import type { Queue } from 'bullmq';
 import { VideosService } from './videos.service';
 import { Video } from './entities/video.entity';
+import { StorageService } from '../storage/storage.service';
+import type { Channel } from '../channels/entities/channel.entity';
 
-function makeRepository(overrides: Record<string, jest.Mock> = {}): any {
+type MockRepository = jest.Mocked<
+  Pick<Repository<Video>, 'findOne' | 'create' | 'save'>
+>;
+
+function makeRepository(
+  overrides: Partial<MockRepository> = {},
+): MockRepository {
   return {
     findOne: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
     ...overrides,
-  };
+  } as unknown as MockRepository;
 }
 
-function makeDataSource(repository: any): any {
+function makeDataSource(repository: MockRepository): DataSource {
   return {
     getRepository: jest.fn().mockReturnValue(repository),
-  };
+  } as unknown as DataSource;
 }
 
-function makeStorageService(overrides: Record<string, jest.Mock> = {}): any {
+type MockStorageService = jest.Mocked<
+  Pick<StorageService, 'createMultipartUpload' | 'completeMultipartUpload'>
+>;
+
+function makeStorageService(
+  overrides: Partial<MockStorageService> = {},
+): MockStorageService {
   return {
     createMultipartUpload: jest.fn().mockResolvedValue({
       uploadId: 'upload-1',
@@ -25,14 +40,16 @@ function makeStorageService(overrides: Record<string, jest.Mock> = {}): any {
     }),
     completeMultipartUpload: jest.fn().mockResolvedValue(undefined),
     ...overrides,
-  };
+  } as unknown as MockStorageService;
 }
 
-function makeQueue(overrides: Record<string, jest.Mock> = {}): any {
+type MockQueue = jest.Mocked<Pick<Queue, 'add'>>;
+
+function makeQueue(overrides: Partial<MockQueue> = {}): MockQueue {
   return {
     add: jest.fn().mockResolvedValue(undefined),
     ...overrides,
-  };
+  } as unknown as MockQueue;
 }
 
 function makeVideo(overrides: Partial<Video> = {}): Video {
@@ -50,10 +67,23 @@ function makeVideo(overrides: Partial<Video> = {}): Video {
 }
 
 function makeUniqueError(): QueryFailedError {
-  const err = new QueryFailedError('INSERT', [], new Error()) as any;
-  err.code = '23505';
-  err.detail = 'Key (slug)=(abc12345) already exists.';
-  return err;
+  const driverError = Object.assign(new Error('duplicate key value'), {
+    code: '23505',
+    detail: 'Key (slug)=(abc12345) already exists.',
+  });
+  return new QueryFailedError('INSERT', [], driverError);
+}
+
+function makeService(
+  repository: MockRepository,
+  storageService: MockStorageService,
+  queue: MockQueue,
+): VideosService {
+  return new VideosService(
+    makeDataSource(repository),
+    storageService as unknown as StorageService,
+    queue as unknown as Queue,
+  );
 }
 
 describe('VideosService', () => {
@@ -66,11 +96,7 @@ describe('VideosService', () => {
         save: jest.fn().mockResolvedValue(video),
       });
       const storageService = makeStorageService();
-      const service = new VideosService(
-        makeDataSource(repository),
-        storageService,
-        makeQueue(),
-      );
+      const service = makeService(repository, storageService, makeQueue());
 
       const result = await service.createDraft(
         'channel-id',
@@ -99,11 +125,7 @@ describe('VideosService', () => {
         save: jest.fn().mockResolvedValue(resolved),
       });
       const storageService = makeStorageService();
-      const service = new VideosService(
-        makeDataSource(repository),
-        storageService,
-        makeQueue(),
-      );
+      const service = makeService(repository, storageService, makeQueue());
 
       await service.createDraft('channel-id', 'Title', 1000, 'video/mp4');
 
@@ -123,11 +145,7 @@ describe('VideosService', () => {
           .mockResolvedValueOnce(resolved),
       });
       const storageService = makeStorageService();
-      const service = new VideosService(
-        makeDataSource(repository),
-        storageService,
-        makeQueue(),
-      );
+      const service = makeService(repository, storageService, makeQueue());
 
       const result = await service.createDraft(
         'channel-id',
@@ -146,11 +164,7 @@ describe('VideosService', () => {
         findOne: jest.fn().mockResolvedValue(existing),
       });
       const storageService = makeStorageService();
-      const service = new VideosService(
-        makeDataSource(repository),
-        storageService,
-        makeQueue(),
-      );
+      const service = makeService(repository, storageService, makeQueue());
 
       await expect(
         service.createDraft('channel-id', 'Title', 1000, 'video/mp4'),
@@ -168,11 +182,7 @@ describe('VideosService', () => {
         save: jest.fn().mockRejectedValue(unexpectedError),
       });
       const storageService = makeStorageService();
-      const service = new VideosService(
-        makeDataSource(repository),
-        storageService,
-        makeQueue(),
-      );
+      const service = makeService(repository, storageService, makeQueue());
 
       await expect(
         service.createDraft('channel-id', 'Title', 1000, 'video/mp4'),
@@ -188,11 +198,7 @@ describe('VideosService', () => {
         save: jest.fn().mockResolvedValue(video),
       });
       const storageService = makeStorageService();
-      const service = new VideosService(
-        makeDataSource(repository),
-        storageService,
-        makeQueue(),
-      );
+      const service = makeService(repository, storageService, makeQueue());
 
       const tenGb = 10 * 1024 * 1024 * 1024;
       await service.createDraft('channel-id', 'Title', tenGb, 'video/mp4');
@@ -211,7 +217,7 @@ describe('VideosService', () => {
   describe('completeUpload', () => {
     function makeDraftVideoWithChannel(userId: string): Video {
       const video = makeVideo({ upload_id: 'upload-1' });
-      (video as any).channel = { id: 'channel-id', user_id: userId };
+      video.channel = { id: 'channel-id', user_id: userId } as Channel;
       return video;
     }
 
@@ -223,11 +229,7 @@ describe('VideosService', () => {
       });
       const storageService = makeStorageService();
       const queue = makeQueue();
-      const service = new VideosService(
-        makeDataSource(repository),
-        storageService,
-        queue,
-      );
+      const service = makeService(repository, storageService, queue);
 
       const result = await service.completeUpload(
         'video-id',
@@ -251,8 +253,8 @@ describe('VideosService', () => {
       const repository = makeRepository({
         findOne: jest.fn().mockResolvedValue(null),
       });
-      const service = new VideosService(
-        makeDataSource(repository),
+      const service = makeService(
+        repository,
         makeStorageService(),
         makeQueue(),
       );
@@ -267,8 +269,8 @@ describe('VideosService', () => {
       const repository = makeRepository({
         findOne: jest.fn().mockResolvedValue(video),
       });
-      const service = new VideosService(
-        makeDataSource(repository),
+      const service = makeService(
+        repository,
         makeStorageService(),
         makeQueue(),
       );
@@ -285,11 +287,7 @@ describe('VideosService', () => {
         findOne: jest.fn().mockResolvedValue(video),
       });
       const queue = makeQueue();
-      const service = new VideosService(
-        makeDataSource(repository),
-        makeStorageService(),
-        queue,
-      );
+      const service = makeService(repository, makeStorageService(), queue);
 
       await expect(
         service.completeUpload('video-id', [], 'user-1'),

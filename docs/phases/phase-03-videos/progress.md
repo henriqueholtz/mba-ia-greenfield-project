@@ -1,4 +1,4 @@
-# phase-03-upload-processing — Progress
+# phase-03-videos — Progress
 
 **Status:** completed
 **SIs:** 8/8 completed
@@ -88,3 +88,17 @@ Three real regressions were found and fixed during final verification (none were
 4. **(Compounding factor for #3) `npm run test:e2e` had no `--runInBand` flag**, so Jest ran all 4 e2e spec files as separate parallel worker processes against the *same* shared Postgres test database — causing genuine cross-file race conditions (one file's cleanup deleting rows an in-flight request in another file depended on), independent of and on top of the FK-ordering bug in #3. This is why the failure was intermittent rather than 100% reproducible. Fixed by adding `--runInBand` to the `test:e2e` script, matching the project's own documented convention (`CLAUDE.md` states e2e "already configured" for serial execution — it wasn't). Verified stable across 3 consecutive full e2e runs post-fix.
 
 None of these four issues were introduced maliciously or carelessly in isolation — each was invisible from the scope of the SI that touched the adjacent code, and only the full-suite final verification step (by design) surfaced them. This is the intended value of running Deliverables checks against the whole test suite rather than trusting per-SI green checkmarks alone.
+
+## Pre-Submission DoD Cleanup
+
+Folder/file naming was corrected to match the plan's contract (`docs/phases/phase-03-videos/`, `technical-decisions-phase-03-videos.md`, `phase-03-videos.md`), and `library-refs.md` was added (previously missing despite this phase fixing new libraries: BullMQ, fluent-ffmpeg, `@aws-sdk/client-s3`/`@aws-sdk/s3-request-presigner`).
+
+`npm run lint` was reported as "pre-existing baseline debt only" in SI-03.4/Final Verification above — that debt (251 `@typescript-eslint/no-unsafe-*` errors project-wide, spanning both Phase 02 files untouched by this phase and this phase's own new files that mirrored the same pre-existing `any`-cast patterns) was fully eliminated as part of closing out this submission, since `npm run lint` passing is an explicit, unscoped Definition-of-Done gate — not just for code added in this phase. Fixed via:
+- Typed `driverError: {code?, detail?}` reads on `QueryFailedError` (replacing `err as any`) in `videos.service.ts`, `channels.service.ts`, and their spec files' `makeUniqueError()` helpers.
+- `jest.Mocked<Pick<T, ...>>`-typed mock factories (replacing untyped `any`-returning factories) across `videos.service.spec.ts`, `channels.service.spec.ts`, `auth.service.spec.ts`.
+- Bracket-notation private-field access (`authService['mailService']`) replacing `(x as any).mailService` in e2e/integration specs that spy on injected services.
+- Typed Mailpit API responses (`src/test/mailpit.ts`) replacing `any`/`any[]` returns.
+- A real bug fix surfaced along the way: `auth.service.integration-spec.ts` queried `revoked_at: null` directly instead of `IsNull()` — per the project's own documented TypeORM pitfall (`.claude/rules/typeorm-queries.md`), a bare `null` in a `where` clause is silently dropped, so that assertion was checking a broader set of rows than intended. Fixed and re-verified green.
+- A pre-existing platform issue was also found and fixed locally: `unrs-resolver` (a `jest-resolve` transitive dependency) was missing its Windows native binding after the repo's `node_modules` had been installed from inside the Linux container and bind-mounted to a Windows host, breaking `jest` when run from the host. Not a project code change — flagging in case CI or another contributor's host-side workflow hits the same `unrs-resolver`/napi-postinstall failure; the fix is a platform-specific `npm install @unrs/resolver-binding-<platform>` or a clean `rm -rf node_modules && npm install` run from the target platform.
+
+Final state: `npx tsc --noEmit` exits 0, `npm run lint` exits 0 with zero errors and zero warnings, full suite (32 suites / 177 tests unit+integration, 4 suites / 72 tests e2e) green.

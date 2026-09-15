@@ -7,8 +7,15 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { StorageService } from './storage.service';
 
+const mockedGetSignedUrl = getSignedUrl as jest.MockedFunction<
+  typeof getSignedUrl
+>;
+
 jest.mock('@aws-sdk/client-s3', () => {
-  const actual = jest.requireActual('@aws-sdk/client-s3');
+  const actual =
+    jest.requireActual<typeof import('@aws-sdk/client-s3')>(
+      '@aws-sdk/client-s3',
+    );
   return {
     ...actual,
     S3Client: jest.fn().mockImplementation(() => ({
@@ -28,22 +35,30 @@ const mockConfig = {
   bucket: 'streamtube-videos',
 };
 
+type SendCommand =
+  | CreateMultipartUploadCommand
+  | CompleteMultipartUploadCommand
+  | UploadPartCommand
+  | GetObjectCommand;
+
 describe('StorageService', () => {
   let service: StorageService;
-  let mockSend: jest.Mock;
+  let mockSend: jest.Mock<Promise<unknown>, [SendCommand]>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     service = new StorageService(mockConfig);
-    mockSend = (service as any).client.send as jest.Mock;
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- accessing the jest.fn() mock instance, not calling it unbound
+    mockSend = service['client'].send as unknown as jest.Mock<
+      Promise<unknown>,
+      [SendCommand]
+    >;
   });
 
   describe('createMultipartUpload', () => {
     it('creates a multipart upload and returns presigned URLs per part', async () => {
       mockSend.mockResolvedValueOnce({ UploadId: 'upload-123' });
-      (getSignedUrl as jest.Mock).mockResolvedValue(
-        'https://minio/presigned-part',
-      );
+      mockedGetSignedUrl.mockResolvedValue('https://minio/presigned-part');
 
       const result = await service.createMultipartUpload(
         'videos/abc/original',
@@ -66,8 +81,7 @@ describe('StorageService', () => {
         { partNumber: 2, url: 'https://minio/presigned-part' },
       ]);
       expect(getSignedUrl).toHaveBeenCalledTimes(2);
-      const firstUploadPartCommand = (getSignedUrl as jest.Mock).mock
-        .calls[0][1];
+      const firstUploadPartCommand = mockedGetSignedUrl.mock.calls[0][1];
       expect(firstUploadPartCommand).toBeInstanceOf(UploadPartCommand);
     });
   });
@@ -105,14 +119,12 @@ describe('StorageService', () => {
 
   describe('getPresignedGetUrl', () => {
     it('returns a presigned GET url for the storage key', async () => {
-      (getSignedUrl as jest.Mock).mockResolvedValue(
-        'https://minio/presigned-get',
-      );
+      mockedGetSignedUrl.mockResolvedValue('https://minio/presigned-get');
 
       const url = await service.getPresignedGetUrl('videos/abc/original');
 
       expect(url).toBe('https://minio/presigned-get');
-      const commandArg = (getSignedUrl as jest.Mock).mock.calls[0][1];
+      const commandArg = mockedGetSignedUrl.mock.calls[0][1];
       expect(commandArg).toBeInstanceOf(GetObjectCommand);
       expect(commandArg.input).toMatchObject({
         Bucket: 'streamtube-videos',
@@ -121,16 +133,15 @@ describe('StorageService', () => {
     });
 
     it('includes a Content-Disposition override when provided', async () => {
-      (getSignedUrl as jest.Mock).mockResolvedValue(
-        'https://minio/presigned-download',
-      );
+      mockedGetSignedUrl.mockResolvedValue('https://minio/presigned-download');
 
       await service.getPresignedGetUrl(
         'videos/abc/original',
         'attachment; filename="video.mp4"',
       );
 
-      const commandArg = (getSignedUrl as jest.Mock).mock.calls[0][1];
+      const commandArg = mockedGetSignedUrl.mock
+        .calls[0][1] as GetObjectCommand;
       expect(commandArg.input.ResponseContentDisposition).toBe(
         'attachment; filename="video.mp4"',
       );

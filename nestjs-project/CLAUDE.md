@@ -34,6 +34,10 @@ docker compose exec nestjs-api npm run start:dev
 Services:
 - `nestjs-api` — NestJS API, port `3000`
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `mailpit` — SMTP + web UI for captured emails
+- `minio` — S3-compatible object storage (video files + thumbnails), API port `9000`, console port `9001`
+- `redis` — backs the BullMQ video-processing queue, port `6379`
+- `video-worker` — separate container running the BullMQ worker (`src/worker.ts`), consumes `video-processing` jobs
 
 All verification and teardown commands run on the **host machine**:
 
@@ -159,3 +163,45 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 ## REST Conventions
 
 This is a RESTful API. All endpoints must follow standard REST conventions — correct HTTP methods, proper status codes, plural resource nouns, and consistent URL structure. Details are enforced via rules on controller files.
+
+## Videos Module (Phase 03)
+
+Video upload, background processing, storage, streaming and download. Belongs to a channel (1:1 with the uploading user's channel). Implemented in `src/videos/`, `src/storage/`, `src/queue/`, plus the worker entrypoint `src/worker.ts`.
+
+### Upload strategy — presigned multipart, never through the API
+
+A 10GB file is never streamed through the NestJS API. `POST /videos` pre-registers the video as `draft`, opens an S3 multipart upload against MinIO, and returns presigned per-part PUT URLs; the client uploads bytes directly to MinIO. `POST /videos/:id/complete-upload` receives the client-reported ETags, calls `CompleteMultipartUploadCommand`, transitions the video to `processing`, and enqueues the `video.process` BullMQ job — all in the same request/transaction.
+
+### Status lifecycle
+
+`Video.status: 'draft' | 'processing' | 'ready' | 'failed'` (`src/videos/entities/video.entity.ts`). `draft` on pre-registration → `processing` on `complete-upload` → `ready` on successful worker processing, or `failed` with `failure_reason` populated on worker error. There is no retry state; a failed video stays `failed`.
+
+### Queue and worker (BullMQ + Redis)
+
+`@nestjs/bullmq` registers the `video-processing` queue (`src/queue/queue.module.ts`, constants in `queue.constants.ts`). `VideosService` injects the `Queue` producer and calls `.add('video.process', { videoId, storageKey })`. The consumer, `VideoProcessor` (`src/videos/video.processor.ts`), is a `@Processor(VIDEO_PROCESSING_QUEUE)` class extending `WorkerHost`; it runs in the separate `video-worker` container/process (`src/worker.ts` → `WorkerModule`), never inside the `nestjs-api` container. Both containers connect to the same `redis` service.
+
+### Processing (FFmpeg)
+
+`VideoProcessorService` (`src/videos/video-processor.service.ts`) downloads the source from storage to a local temp file, runs `ffprobe` to extract `duration_seconds`, `video_codec`, `width`, `height`, `file_size_bytes`, `mime_type`, and generates a thumbnail via `fluent-ffmpeg`'s `screenshots()` (50% mark), then uploads the thumbnail back to storage. `VideoProcessor` (the BullMQ consumer) calls this service, updates the `Video` row on success (`status: 'ready'` + extracted metadata + `thumbnail_key`), and on failure sets `status: 'failed'` with `failure_reason` — always caught and persisted, never left as an unhandled rejection in the worker process. See `docs/phases/phase-03-videos/library-refs.md` for fluent-ffmpeg usage details.
+
+### Object storage (MinIO / S3-compatible)
+
+`StorageService` (`src/storage/storage.service.ts`) wraps `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`, configured via `storage.config.ts` to point at the `minio` Docker service with `forcePathStyle: true` (same API surface as real S3; swap the endpoint/credentials for production). Storage keys follow `videos/<slug>/original` and `videos/<slug>/thumbnail.png`. Presigned GET URLs back both streaming (`GET /videos/:id/stream`, inline, range requests handled natively by S3/MinIO for 206 Partial Content) and download (`GET /videos/:id/download`, `ResponseContentDisposition: attachment`).
+
+### Unique URL
+
+Each video has a random unique `slug` column (`src/videos/slug.util.ts` generates it; collisions are retried with a fresh slug and, for the DB-level race, a Postgres unique-violation retry loop). `GET /videos/:slug` is the public detail endpoint.
+
+### Endpoints (Authorization Matrix summary — full contract in `docs/phases/phase-03-videos/phase-03-videos.md`)
+
+| Endpoint | Auth | Notes |
+|---|---|---|
+| `POST /videos` | JWT required | Pre-registers draft, returns presigned part URLs |
+| `POST /videos/:id/complete-upload` | JWT required, owner-only | Completes multipart upload, enqueues processing |
+| `GET /videos/:id/stream` | `@Public()` | Redirects to a presigned GET URL, range-request streaming |
+| `GET /videos/:id/download` | `@Public()` | Redirects to a presigned GET URL with attachment disposition |
+| `GET /videos/:slug` | `@Public()` | Video metadata + `thumbnail_url` (null until `ready`) |
+
+### Migration
+
+`src/database/migrations/<timestamp>-CreateVideos.ts` creates the `videos` table (FK to `channels`).

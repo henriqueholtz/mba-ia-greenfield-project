@@ -12,6 +12,8 @@ import { User } from '../users/entities/user.entity';
 import { StorageService } from '../storage/storage.service';
 import { Video } from './entities/video.entity';
 import { VideosService } from './videos.service';
+import * as slugUtil from './slug.util';
+import type { VideoProcessJobData } from './video.processor';
 
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 
@@ -110,7 +112,7 @@ describe('VideosService.createDraft (integration)', () => {
     );
 
     jest
-      .spyOn(require('./slug.util'), 'generateSlug')
+      .spyOn(slugUtil, 'generateSlug')
       .mockReturnValueOnce(first.video.slug)
       .mockReturnValueOnce('unique99');
 
@@ -205,7 +207,9 @@ describe('VideosService.completeUpload (integration)', () => {
     expect(result.status).toBe('processing');
 
     const waiting = await queue.getJobs(['waiting', 'active', 'completed']);
-    const job = waiting.find((j) => j.data.videoId === draft.video.id);
+    const job = waiting.find(
+      (j) => (j.data as VideoProcessJobData).videoId === draft.video.id,
+    );
     expect(job).toBeDefined();
     expect(job?.name).toBe('video.process');
     expect(job?.data).toEqual({

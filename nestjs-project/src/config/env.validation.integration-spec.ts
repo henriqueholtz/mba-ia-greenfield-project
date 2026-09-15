@@ -10,11 +10,17 @@ const requiredEnv = {
   MINIO_SECRET_KEY: 'secret-key',
 };
 
-const validate = (env: Record<string, string>) =>
-  envValidationSchema.validate(
+interface ValidatedEnv {
+  SWAGGER_ENABLED: string;
+}
+
+const validate = (env: Record<string, string>) => {
+  const result = envValidationSchema.validate(
     { ...requiredEnv, ...env },
     { allowUnknown: true, abortEarly: false },
   );
+  return { ...result, value: result.value as ValidatedEnv };
+};
 
 describe('envValidationSchema — SWAGGER_ENABLED', () => {
   it('should reject SWAGGER_ENABLED with an invalid value', () => {

@@ -7,16 +7,24 @@ import {
   VideoNotReadyException,
 } from '../common/exceptions/domain.exception';
 
+interface ErrorResponseBody {
+  statusCode: number;
+  error: string;
+  message: unknown;
+}
+
 describe('Video domain exceptions', () => {
   let filter: DomainExceptionFilter;
-  let mockJson: jest.Mock;
-  let mockStatus: jest.Mock;
+  let mockJson: jest.Mock<void, [ErrorResponseBody]>;
+  let mockStatus: jest.Mock<{ json: typeof mockJson }, [number]>;
   let mockHost: ArgumentsHost;
 
   beforeEach(() => {
     filter = new DomainExceptionFilter();
-    mockJson = jest.fn();
-    mockStatus = jest.fn().mockReturnValue({ json: mockJson });
+    mockJson = jest.fn<void, [ErrorResponseBody]>();
+    mockStatus = jest
+      .fn<{ json: typeof mockJson }, [number]>()
+      .mockReturnValue({ json: mockJson });
 
     mockHost = {
       switchToHttp: () => ({
@@ -25,8 +33,8 @@ describe('Video domain exceptions', () => {
       }),
       getArgs: () => [],
       getArgByIndex: () => null,
-      switchToRpc: () => ({}) as any,
-      switchToWs: () => ({}) as any,
+      switchToRpc: () => ({}) as ReturnType<ArgumentsHost['switchToRpc']>,
+      switchToWs: () => ({}) as ReturnType<ArgumentsHost['switchToWs']>,
       getType: () => 'http',
     } as unknown as ArgumentsHost;
   });
@@ -38,7 +46,7 @@ describe('Video domain exceptions', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 404,
       error: 'VIDEO_NOT_FOUND',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 
@@ -49,7 +57,7 @@ describe('Video domain exceptions', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 403,
       error: 'VIDEO_FORBIDDEN',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 
@@ -60,7 +68,7 @@ describe('Video domain exceptions', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 409,
       error: 'VIDEO_ALREADY_PROCESSED',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 
@@ -71,7 +79,7 @@ describe('Video domain exceptions', () => {
     expect(mockJson).toHaveBeenCalledWith({
       statusCode: 409,
       error: 'VIDEO_NOT_READY',
-      message: expect.any(String),
+      message: expect.any(String) as unknown as string,
     });
   });
 });

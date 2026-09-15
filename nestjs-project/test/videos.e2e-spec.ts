@@ -13,6 +13,38 @@ import { cleanAllTables } from '../src/test/create-test-data-source';
 import { Video } from '../src/videos/entities/video.entity';
 import { StorageService } from '../src/storage/storage.service';
 
+interface ErrorResponseBody {
+  error: string;
+}
+
+interface LoginResponseBody {
+  access_token: string;
+}
+
+interface PartUrl {
+  url: string;
+}
+
+interface CreateDraftResponseBody {
+  id: string;
+  slug: string;
+  status: string;
+  upload_id: string;
+  part_urls: PartUrl[];
+}
+
+interface CompleteUploadResponseBody {
+  id: string;
+  status: string;
+}
+
+interface VideoDetailResponseBody {
+  id: string;
+  slug: string;
+  status: string;
+  thumbnail_url: string | null;
+}
+
 describe('Videos (e2e)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
@@ -64,12 +96,13 @@ describe('Videos (e2e)', () => {
     const password = 'password123';
 
     const authService = app.get(AuthService);
-    const mailServiceInstance = (authService as any).mailService;
+    const mailServiceInstance = authService['mailService'];
     let capturedToken = '';
     jest
       .spyOn(mailServiceInstance, 'sendConfirmationEmail')
-      .mockImplementationOnce(async (_e: string, _n: string, t: string) => {
+      .mockImplementationOnce((_e: string, _n: string, t: string) => {
         capturedToken = t;
+        return Promise.resolve();
       });
 
     await request(app.getHttpServer())
@@ -84,7 +117,10 @@ describe('Videos (e2e)', () => {
       .post('/auth/login')
       .send({ email, password });
 
-    return { accessToken: loginRes.body.access_token, email };
+    return {
+      accessToken: (loginRes.body as LoginResponseBody).access_token,
+      email,
+    };
   }
 
   async function createDraftVideo(
@@ -98,7 +134,8 @@ describe('Videos (e2e)', () => {
         file_size_bytes: 1024,
         mime_type: 'video/mp4',
       });
-    return { id: res.body.id, partUrl: res.body.part_urls[0].url };
+    const body = res.body as CreateDraftResponseBody;
+    return { id: body.id, partUrl: body.part_urls[0].url };
   }
 
   const storageConfig = {
@@ -158,12 +195,13 @@ describe('Videos (e2e)', () => {
         })
         .expect(201);
 
-      expect(res.body.id).toBeDefined();
-      expect(res.body.slug).toBeDefined();
-      expect(res.body.status).toBe('draft');
-      expect(res.body.upload_id).toBeDefined();
-      expect(Array.isArray(res.body.part_urls)).toBe(true);
-      expect(res.body.part_urls.length).toBeGreaterThanOrEqual(1);
+      const body = res.body as CreateDraftResponseBody;
+      expect(body.id).toBeDefined();
+      expect(body.slug).toBeDefined();
+      expect(body.status).toBe('draft');
+      expect(body.upload_id).toBeDefined();
+      expect(Array.isArray(body.part_urls)).toBe(true);
+      expect(body.part_urls.length).toBeGreaterThanOrEqual(1);
     });
 
     it('returns 401 without an Authorization header', async () => {
@@ -186,7 +224,7 @@ describe('Videos (e2e)', () => {
         .send({ file_size_bytes: 1024, mime_type: 'video/mp4' })
         .expect(400);
 
-      expect(res.body.error).toBe('VALIDATION_ERROR');
+      expect((res.body as ErrorResponseBody).error).toBe('VALIDATION_ERROR');
     });
   });
 
@@ -202,8 +240,9 @@ describe('Videos (e2e)', () => {
         .send({ parts: [{ part_number: 1, etag }] })
         .expect(200);
 
-      expect(res.body.id).toBe(videoId);
-      expect(res.body.status).toBe('processing');
+      const body = res.body as CompleteUploadResponseBody;
+      expect(body.id).toBe(videoId);
+      expect(body.status).toBe('processing');
     });
 
     it('returns 403 when the video belongs to a different channel', async () => {
@@ -220,7 +259,7 @@ describe('Videos (e2e)', () => {
         .send({ parts: [{ part_number: 1, etag }] })
         .expect(403);
 
-      expect(res.body.error).toBe('VIDEO_FORBIDDEN');
+      expect((res.body as ErrorResponseBody).error).toBe('VIDEO_FORBIDDEN');
     });
 
     it('returns 404 for a non-existent video', async () => {
@@ -232,7 +271,7 @@ describe('Videos (e2e)', () => {
         .send({ parts: [{ part_number: 1, etag: '"etag-1"' }] })
         .expect(404);
 
-      expect(res.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((res.body as ErrorResponseBody).error).toBe('VIDEO_NOT_FOUND');
     });
 
     it('returns 409 VIDEO_ALREADY_PROCESSED when called twice', async () => {
@@ -252,7 +291,9 @@ describe('Videos (e2e)', () => {
         .send({ parts: [{ part_number: 1, etag }] })
         .expect(409);
 
-      expect(res.body.error).toBe('VIDEO_ALREADY_PROCESSED');
+      expect((res.body as ErrorResponseBody).error).toBe(
+        'VIDEO_ALREADY_PROCESSED',
+      );
     });
 
     it('returns 400 with invalid payload (empty parts array)', async () => {
@@ -265,7 +306,7 @@ describe('Videos (e2e)', () => {
         .send({ parts: [] })
         .expect(400);
 
-      expect(res.body.error).toBe('VALIDATION_ERROR');
+      expect((res.body as ErrorResponseBody).error).toBe('VALIDATION_ERROR');
     });
 
     it('returns 401 without an Authorization header', async () => {
@@ -304,7 +345,7 @@ describe('Videos (e2e)', () => {
         .get(`/videos/${videoId}/stream`)
         .expect(409);
 
-      expect(res.body.error).toBe('VIDEO_NOT_READY');
+      expect((res.body as ErrorResponseBody).error).toBe('VIDEO_NOT_READY');
     });
 
     it('returns 404 VIDEO_NOT_FOUND for a non-existent video', async () => {
@@ -312,7 +353,7 @@ describe('Videos (e2e)', () => {
         .get('/videos/00000000-0000-0000-0000-000000000000/stream')
         .expect(404);
 
-      expect(res.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((res.body as ErrorResponseBody).error).toBe('VIDEO_NOT_FOUND');
     });
 
     it('is accessible without an Authorization header', async () => {
@@ -351,7 +392,7 @@ describe('Videos (e2e)', () => {
         .get(`/videos/${videoId}/download`)
         .expect(409);
 
-      expect(res.body.error).toBe('VIDEO_NOT_READY');
+      expect((res.body as ErrorResponseBody).error).toBe('VIDEO_NOT_READY');
     });
 
     it('returns 404 VIDEO_NOT_FOUND for a non-existent video', async () => {
@@ -359,7 +400,7 @@ describe('Videos (e2e)', () => {
         .get('/videos/00000000-0000-0000-0000-000000000000/download')
         .expect(404);
 
-      expect(res.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((res.body as ErrorResponseBody).error).toBe('VIDEO_NOT_FOUND');
     });
   });
 
@@ -375,11 +416,12 @@ describe('Videos (e2e)', () => {
         .get(`/videos/${video.slug}`)
         .expect(200);
 
-      expect(res.body.id).toBe(videoId);
-      expect(res.body.slug).toBe(video.slug);
-      expect(res.body.status).toBe('ready');
-      expect(res.body.thumbnail_url).toBeDefined();
-      expect(typeof res.body.thumbnail_url).toBe('string');
+      const body = res.body as VideoDetailResponseBody;
+      expect(body.id).toBe(videoId);
+      expect(body.slug).toBe(video.slug);
+      expect(body.status).toBe('ready');
+      expect(body.thumbnail_url).toBeDefined();
+      expect(typeof body.thumbnail_url).toBe('string');
     });
 
     it('returns thumbnail_url null for a video that is not ready', async () => {
@@ -393,8 +435,9 @@ describe('Videos (e2e)', () => {
         .get(`/videos/${video.slug}`)
         .expect(200);
 
-      expect(res.body.status).toBe('draft');
-      expect(res.body.thumbnail_url).toBeNull();
+      const body = res.body as VideoDetailResponseBody;
+      expect(body.status).toBe('draft');
+      expect(body.thumbnail_url).toBeNull();
     });
 
     it('returns 404 for a non-existent slug', async () => {
@@ -402,7 +445,7 @@ describe('Videos (e2e)', () => {
         .get('/videos/nonexistentslug')
         .expect(404);
 
-      expect(res.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((res.body as ErrorResponseBody).error).toBe('VIDEO_NOT_FOUND');
     });
 
     it('is accessible without an Authorization header (anonymous)', async () => {

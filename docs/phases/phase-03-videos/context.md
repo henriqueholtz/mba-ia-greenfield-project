@@ -1,15 +1,15 @@
 ---
 kind: phase
-name: phase-03-upload-processing
+name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-08-21T06:25:52.637409800-03:00"
-  docs/decisions/technical-decisions-upload-processing.md: "2026-09-14T13:25:09.360231400-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-14T13:25:09.360231400-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-08-21T06:25:52.627101200-03:00"
   docs/phases/phase-02-auth/context.md: "2026-08-21T06:25:52.634408300-03:00"
   .claude/skills/testing-guide-nestjs-project/SKILL.md: "2026-08-21T06:25:52.335339200-03:00"
 ---
 
-# phase-03-upload-processing — Context
+# phase-03-videos — Context
 
 ## Scope
 
@@ -59,7 +59,7 @@ sources_mtime:
 
 _Source files:_
 
-- upload-processing — `docs/decisions/technical-decisions-upload-processing.md` (scope_type: phase)
+- upload-processing — `docs/decisions/technical-decisions-phase-03-videos.md` (scope_type: phase)
 
 ## Capability Coverage
 
