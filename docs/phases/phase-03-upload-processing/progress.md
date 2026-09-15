@@ -1,6 +1,6 @@
 # phase-03-upload-processing — Progress
 
-**Status:** in_progress (final verification pending)
+**Status:** completed
 **SIs:** 8/8 completed
 
 ### SI-03.1 — Infra: object storage, fila e worker no Compose
@@ -70,3 +70,21 @@
 - **Observations:**
   - Implemented out of document order (before SI-03.4, not after SI-03.7) because SI-03.4's Technical actions require throwing `VideoNotFoundException` and `VideoAlreadyProcessedException`, both defined by this SI. The plan's Dependency Map lists SI-03.8 as independent/last, but that's inconsistent with SI-03.4's actual code dependency on these classes — flagging this as a plan authoring gap for future phases (an SI whose exceptions are consumed by an earlier-numbered SI should be sequenced before it, or explicitly marked as a Dependencies entry for that SI). User confirmed reordering was the right call over stopping to revise the plan.
   - No filter changes needed: `DomainExceptionFilter` (`src/common/filters/domain-exception.filter.ts`) already catches any `DomainException` subclass generically via `@Catch(DomainException)` — new exceptions only needed their own class definitions, not filter wiring.
+
+## Final Verification
+
+All plan-level Deliverables checks pass:
+
+- **Unit + integration tests:** 32/32 suites, 177/177 tests passing (`docker compose exec nestjs-api npm test -- --runInBand`)
+- **E2E tests:** 4/4 suites, 72/72 tests passing, confirmed stable across 3 consecutive runs (`docker compose exec nestjs-api npm run test:e2e`)
+- **Type-check:** `npx tsc --noEmit` exits 0
+- **Lint:** pre-existing baseline debt only (see SI-03.4 observation) — no new categories of error introduced by this phase; the one genuinely new-code lint issue (`prefer-promise-reject-errors` in `video-processor.service.ts`) was fixed during final verification.
+
+Three real regressions were found and fixed during final verification (none were visible from any single SI's own scoped tests — all three only surfaced when running the **full** suite together, which is exactly why this step exists):
+
+1. **`Video.channel`'s `@ManyToOne` was missing its inverse-relation callback** (`(channel) => channel.videos`) — without it, TypeORM cannot resolve `Channel.videos`' inverse side, and `DataSource.initialize()` throws `TypeORMError: Entity metadata for Channel#videos was not found` for **any** DataSource that loads both entities. This broke 10 pre-existing test files project-wide (auth, users, channels module/entity/service specs) that hadn't been touched by this phase but share the `Channel` entity. Fixed `video.entity.ts`, and added `Video` to all 10 affected files' scoped `ALL_ENTITIES` test fixtures (a direct, mechanical consequence of correctly wiring the relation — every DataSource that includes `Channel` now must also include `Video`).
+2. **`env.validation.integration-spec.ts`'s shared `requiredEnv` test fixture was missing `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY`**, which SI-03.1 made required in the Joi schema — broke 3 pre-existing `SWAGGER_ENABLED` tests. Fixed by adding both keys to the fixture.
+3. **`cleanAllTables()` (the shared test-cleanup helper) didn't delete from `"videos"` before `"channels"`/`"users"`**, violating the new `videos.channel_id` FK whenever a suite left video rows behind — this broke `auth.e2e-spec.ts` intermittently whenever it ran after `videos.e2e-spec.ts` had populated the table. Fixed by adding `DELETE FROM "videos"` to `cleanAllTables` in FK-safe order (now safe for every caller since fix #1 means every caller's entity list includes `Video`).
+4. **(Compounding factor for #3) `npm run test:e2e` had no `--runInBand` flag**, so Jest ran all 4 e2e spec files as separate parallel worker processes against the *same* shared Postgres test database — causing genuine cross-file race conditions (one file's cleanup deleting rows an in-flight request in another file depended on), independent of and on top of the FK-ordering bug in #3. This is why the failure was intermittent rather than 100% reproducible. Fixed by adding `--runInBand` to the `test:e2e` script, matching the project's own documented convention (`CLAUDE.md` states e2e "already configured" for serial execution — it wasn't). Verified stable across 3 consecutive full e2e runs post-fix.
+
+None of these four issues were introduced maliciously or carelessly in isolation — each was invisible from the scope of the SI that touched the adjacent code, and only the full-suite final verification step (by design) surfaced them. This is the intended value of running Deliverables checks against the whole test suite rather than trusting per-SI green checkmarks alone.
